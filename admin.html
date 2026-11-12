@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Hitlock Tools · Moderation</title>
+<style>
+  :root { --bg:#08080b; --card:#101016; --line:rgba(255,255,255,.1); --text:#f2f2f6; --muted:#8d8d9b; --gold:#f5b83d; --ok:#5ee3a1; --bad:#ff6b81; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: ui-rounded, "Nunito", "Segoe UI", system-ui, sans-serif; line-height: 1.5; padding: 24px 16px 80px; }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 26px; margin-bottom: 4px; } h1 span { color: var(--gold); }
+  .muted { color: var(--muted); font-size: 14px; }
+  .box { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 18px; margin-top: 14px; }
+  input { width: 100%; font: inherit; color: var(--text); background: #0a0a0e; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-top: 10px; outline: none; }
+  input:focus { border-color: var(--gold); }
+  button { font: inherit; font-weight: 700; cursor: pointer; border: 0; border-radius: 99px; padding: 9px 18px; background: var(--gold); color: #1a1305; }
+  button.g { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  button.ok { background: var(--ok); color: #06210f; } button.bad { background: var(--bad); color: #2a0610; }
+  button:disabled { opacity: .5; }
+  .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .tabs { display: flex; gap: 8px; margin-top: 18px; }
+  .tabs button { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+  .tabs button.on { color: #1a1305; background: var(--gold); border-color: var(--gold); }
+  .c .meta { font-size: 13px; color: var(--muted); } .c .meta b { color: var(--text); font-size: 15px; margin-right: 8px; }
+  .c p { margin-top: 6px; overflow-wrap: anywhere; }
+  .c img { margin-top: 10px; max-width: 100%; max-height: 300px; border-radius: 14px; border: 1px solid var(--line); display: block; }
+  .acts { display: flex; gap: 8px; margin-top: 12px; }
+  #msg { color: var(--bad); font-size: 14px; margin-top: 10px; min-height: 1em; }
+  .hide { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><div><h1>Hitlock <span>Moderation</span></h1><div class="muted">Approve or delete community comments.</div></div><button class="g hide" id="out">Sign out</button></div>
+
+  <div class="box" id="login">
+    <b>Admin sign in</b>
+    <input id="email" type="email" placeholder="Email" autocomplete="username">
+    <input id="pass" type="password" placeholder="Password" autocomplete="current-password">
+    <div style="margin-top:12px"><button id="go">Sign in</button></div>
+    <div id="msg"></div>
+  </div>
+
+  <div id="panel" class="hide">
+    <div class="tabs"><button id="tp" class="on">Pending <span id="np"></span></button><button id="ta">Approved <span id="na"></span></button></div>
+    <div id="list"></div>
+  </div>
+</main>
+
+<script>
+const SUPABASE_URL = "https://xnkeemjxutjcthogmkcl.supabase.co";
+const SUPABASE_KEY = "sb_publishable_Rj3mV9tA78TiwkLLrkh3wg_nIL2zFQr";
+const BUCKET = "comment-images";
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const IMG_BASE = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/`;
+let token = sessionStorage.getItem("hl_admin") || "", view = "pending", rows = [];
+
+const api = (path, opts = {}) => fetch(`${SUPABASE_URL}${path}`, { ...opts, headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...opts.headers } });
+
+async function signIn() {
+  $("#msg").textContent = "";
+  const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, { method: "POST", headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ email: $("#email").value.trim(), password: $("#pass").value }) });
+  if (!r.ok) { $("#msg").textContent = "Wrong email or password."; return; }
+  token = (await r.json()).access_token; sessionStorage.setItem("hl_admin", token); $("#pass").value = ""; show();
+}
+function signOut() { token = ""; sessionStorage.removeItem("hl_admin"); show(); }
+
+async function load() {
+  const r = await api("/rest/v1/comments?select=id,name,message,image_url,approved,created_at&order=created_at.desc&limit=200");
+  if (r.status === 401) return signOut();
+  rows = r.ok ? await r.json() : [];
+  render();
+}
+function render() {
+  const pend = rows.filter(c => !c.approved), appr = rows.filter(c => c.approved);
+  $("#np").textContent = `(${pend.length})`; $("#na").textContent = `(${appr.length})`;
+  const list = view === "pending" ? pend : appr;
+  $("#list").innerHTML = list.length ? list.map(c => `
+    <div class="box c" data-id="${esc(c.id)}">
+      <div class="meta"><b>${esc(c.name)}</b>${new Date(c.created_at).toLocaleString()}</div>
+      <p>${esc(c.message)}</p>
+      ${c.image_url && c.image_url.startsWith(IMG_BASE) ? `<a href="${esc(c.image_url)}" target="_blank" rel="noopener"><img src="${esc(c.image_url)}" alt=""></a>` : ""}
+      <div class="acts">
+        ${c.approved ? `<button class="g" data-a="hide">Unapprove</button>` : `<button class="ok" data-a="approve">Approve</button>`}
+        <button class="bad" data-a="del">Delete</button>
+      </div>
+    </div>`).join("") : `<div class="box muted">Nothing here.</div>`;
+}
+$("#list").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-a]"); if (!b) return;
+  const id = b.closest(".c").dataset.id, a = b.dataset.a, c = rows.find(x => String(x.id) === id);
+  b.disabled = true;
+  if (a === "del") {
+    if (!confirm("Delete this comment permanently?")) { b.disabled = false; return; }
+    if (c.image_url && c.image_url.startsWith(IMG_BASE)) await api(`/storage/v1/object/${BUCKET}/${encodeURIComponent(c.image_url.slice(IMG_BASE.length))}`, { method: "DELETE" });
+    await api(`/rest/v1/comments?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
+  } else {
+    await api(`/rest/v1/comments?id=eq.${encodeURIComponent(id)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ approved: a === "approve" }) });
+  }
+  load();
+});
+$("#tp").onclick = () => { view = "pending"; $("#tp").classList.add("on"); $("#ta").classList.remove("on"); render(); };
+$("#ta").onclick = () => { view = "approved"; $("#ta").classList.add("on"); $("#tp").classList.remove("on"); render(); };
+$("#go").onclick = signIn; $("#pass").addEventListener("keydown", e => e.key === "Enter" && signIn()); $("#out").onclick = signOut;
+function show() { const on = !!token; $("#login").classList.toggle("hide", on); $("#panel").classList.toggle("hide", !on); $("#out").classList.toggle("hide", !on); if (on) load(); }
+show();
+</script>
+</body>
+</html>
