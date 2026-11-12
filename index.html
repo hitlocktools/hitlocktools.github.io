@@ -262,7 +262,7 @@
   <div class="stats">
     <div class="card stat pop tilt" style="--d:0s"><div class="n" data-to="1">0</div><div class="k">Tool released</div></div>
     <div class="card stat pop tilt" style="--d:.08s"><div class="n" data-to="100" data-suffix="%">0</div><div class="k">Free to use</div></div>
-    <div class="card stat pop tilt" style="--d:.16s"><div class="n" data-to="7">0</div><div class="k">Community comments</div></div>
+    <div class="card stat pop tilt" style="--d:.16s"><div class="n" id="statComments" data-to="0">0</div><div class="k">Community comments</div></div>
     <div class="card stat pop tilt" style="--d:.24s"><div class="n" data-to="0" data-suffix="ms">0</div><div class="k">Setup time wasted</div></div>
   </div>
 
@@ -334,6 +334,7 @@
     <form class="card form pop" id="form" autocomplete="off">
       <input id="name" placeholder="Your name" maxlength="24" required>
       <input id="msg" class="msg" placeholder="Leave a comment…" maxlength="200" required>
+      <input id="hp" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
       <button class="btn primary" type="submit">Post</button>
     </form>
     <div id="list"></div>
@@ -351,6 +352,9 @@
 /* ─── CONFIG — edit these ─────────────────────────── */
 const YT_ID        = "YOUR_VIDEO_ID";   // e.g. "dQw4w9WgXcQ"
 const DOWNLOAD_URL = "https://github.com/YOUR_USER/YOUR_REPO/releases/latest/download/Test.zip";
+const SUPABASE_URL  = "https://xnkeemjxutjcthogmkcl.supabase.co";  // Project Settings → API Keys
+const SUPABASE_KEY  = "sb_publishable_Rj3mV9tA78TiwkLLrkh3wg_nIL2zFQr";               // sb_publishable_… (safe to expose)
+const PREMODERATION = false;                                // true = comments appear after you approve them
 /* ─────────────────────────────────────────────────── */
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -414,32 +418,20 @@ $$(".q").forEach(el => el.addEventListener("click", () => {
   $("button", el).setAttribute("aria-expanded", open);
 }));
 
-/* comments (3 → 3d ago, 2 → 2d ago, 1 → yesterday, 1 → today) */
-// Use the REAL date each comment was left (YYYY-MM-DD). "3 days ago" updates itself every day.
-const seed = [
-  { n: "Kairo", c: "#f5b83d", d: "2026-11-09", m: "Just tried it, works great." },
-  { n: "Mira",  c: "#7cc4ff", d: "2026-11-09", m: "Clean and simple. Love it." },
-  { n: "Dex",   c: "#b794f6", d: "2026-11-09", m: "Thanks for sharing this!" },
-  { n: "Nova",  c: "#6ee7a8", d: "2026-11-10", m: "Smooth setup, no issues." },
-  { n: "Rook",  c: "#ff8fa3", d: "2026-11-10", m: "The showcase video helped a lot." },
-  { n: "Juno",  c: "#ffd166", d: "2026-11-11", m: "Nice work, keep it up!" },
-  { n: "Atlas", c: "#7cc4ff", d: "2026-11-12", m: "Downloaded. Looking forward to updates." }
-];
-function timeAgo(c) {
-  if (!c.d) return c.t || "";
-  const hasTime = c.d.includes("T");
-  const then = hasTime ? new Date(c.d) : new Date(c.d + "T00:00:00");
-  const now = new Date();
-  if (hasTime) {
-    const mins = Math.floor((now - then) / 60000);
-    if (mins < 1) return "Just now";
-    if (mins < 60 && then.toDateString() === now.toDateString()) return mins + " min ago";
-    if (then.toDateString() === now.toDateString()) return Math.floor(mins / 60) + " hours ago";
-  }
+/* comments — stored in Supabase (run supabase-comments.sql once) */
+const sbReady = !SUPABASE_URL.includes("YOUR_PROJECT") && !SUPABASE_KEY.includes("YOUR_");
+const sb = (path, opts = {}) => fetch(`${SUPABASE_URL}/rest/v1/${path}`,
+  { ...opts, headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json", ...opts.headers } });
+
+function timeAgo(iso) {
+  const then = new Date(iso.replace(/(\.\d{3})\d+/, "$1")), now = new Date();
+  const mins = Math.floor((now - then) / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return mins + " min ago";
+  if (then.toDateString() === now.toDateString()) return Math.floor(mins / 60) + " hours ago";
   const a = new Date(then.getFullYear(), then.getMonth(), then.getDate());
   const b = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const days = Math.round((b - a) / 86400000);
-  if (days <= 0) return "Today";
   if (days === 1) return "Yesterday";
   if (days < 7) return days + " days ago";
   if (days < 30) { const w = Math.floor(days / 7); return w + (w === 1 ? " week ago" : " weeks ago"); }
@@ -447,31 +439,56 @@ function timeAgo(c) {
   const y = Math.floor(days / 365); return y + (y === 1 ? " year ago" : " years ago");
 }
 const colors = ["#f5b83d", "#7cc4ff", "#b794f6", "#6ee7a8", "#ff8fa3", "#ffd166"];
-let mine = [];
-try { mine = JSON.parse(localStorage.getItem("hl_comments") || "[]"); } catch {}
+const colorFor = n => colors[[...n].reduce((a, ch) => a + ch.charCodeAt(0), 0) % colors.length];
 const esc = s => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const cHTML = (c, cls = "") => `
   <div class="card comment ${cls}">
-    <div class="avatar" style="--c:${c.c}">${esc(c.n[0].toUpperCase())}</div>
-    <div><div class="meta"><b>${esc(c.n)}</b><span>${timeAgo(c)}</span></div><p>${esc(c.m)}</p></div>
+    <div class="avatar" style="--c:${colorFor(c.name)}">${esc([...c.name][0].toUpperCase())}</div>
+    <div><div class="meta"><b>${esc(c.name)}</b><span>${timeAgo(c.created_at)}</span></div><p>${esc(c.message)}</p></div>
   </div>`;
-function renderComments() {
-  const all = [...mine.slice().reverse(), ...seed.slice().reverse()];
-  $("#list").innerHTML = all.map((c, i) => cHTML(c, "pop")).join("");
-  $("#count").textContent = all.length;
-  $$("#list .pop").forEach((el, i) => { el.style.setProperty("--d", (i % 5) * .05 + "s"); io.observe(el); });
+const note = t => `<div class="card comment note"><p>${t}</p></div>`;
+
+function setCount(n) {
+  $("#count").textContent = n;
+  const el = $("#statComments"); el.dataset.to = n;
+  if (el.dataset.done) { delete el.dataset.done; countUp(el); }
 }
-$("#form").addEventListener("submit", e => {
+async function loadComments() {
+  if (!sbReady) { $("#list").innerHTML = note("Comments aren't connected yet — add your Supabase details in the CONFIG block."); return; }
+  try {
+    const r = await sb("comments?select=name,message,created_at&order=created_at.desc&limit=50", { headers: { Prefer: "count=exact" } });
+    if (!r.ok) throw 0;
+    const rows = await r.json();
+    const total = +(r.headers.get("content-range") || "").split("/")[1] || rows.length;
+    $("#list").innerHTML = rows.length ? rows.map(c => cHTML(c, "pop")).join("") : note("No comments yet — be the first.");
+    setCount(total);
+    $$("#list .pop").forEach((el, i) => { el.style.setProperty("--d", (i % 5) * .05 + "s"); io.observe(el); });
+  } catch { $("#list").innerHTML = note("Couldn't load comments. Refresh the page to try again."); }
+}
+
+let posting = false;
+$("#form").addEventListener("submit", async e => {
   e.preventDefault();
-  const n = $("#name").value.trim(), m = $("#msg").value.trim();
-  if (!n || !m) return;
-  mine.push({ n, m, d: new Date().toISOString(), c: colors[Math.floor(Math.random() * colors.length)] });
-  try { localStorage.setItem("hl_comments", JSON.stringify(mine)); } catch {}
-  $("#msg").value = "";
-  const all = [...mine.slice().reverse(), ...seed.slice().reverse()];
-  $("#list").insertAdjacentHTML("afterbegin", cHTML(mine[mine.length - 1], "new"));
-  $("#count").textContent = all.length;
-  toast("Comment posted 💬");
+  if (!sbReady) return toast("Add your Supabase details in the CONFIG block ✨");
+  const name = $("#name").value.trim(), message = $("#msg").value.trim();
+  if (!name || !message || posting) return;
+  if ($("#hp").value) { $("#msg").value = ""; return; }            // bot trap: stay silent
+  let last = 0; try { last = +localStorage.getItem("hl_last") || 0; } catch {}
+  const wait = Math.ceil((last + 20000 - Date.now()) / 1000);
+  if (wait > 0) return toast(`Slow down — try again in ${wait}s`);
+  posting = true;
+  try {
+    const r = await sb("comments", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ name, message }) });
+    if (!r.ok) throw 0;
+    try { localStorage.setItem("hl_last", Date.now()); } catch {}
+    $("#msg").value = "";
+    if (PREMODERATION) return toast("Thanks! Your comment appears once it's approved.");
+    if ($(".note", $("#list"))) $("#list").innerHTML = "";
+    $("#list").insertAdjacentHTML("afterbegin", cHTML({ name, message, created_at: new Date().toISOString() }, "new"));
+    setCount((+$("#count").textContent || 0) + 1);
+    toast("Comment posted 💬");
+  } catch { toast("Couldn't post — try again in a moment"); }
+  finally { posting = false; }
 });
 
 /* reveal on scroll */
@@ -480,7 +497,7 @@ const io = new IntersectionObserver(es => es.forEach(e => {
     $$(".n, .num", e.target).forEach(countUp); }
 }), { threshold: .12 });
 $$(".pop").forEach(el => io.observe(el));
-renderComments();
+loadComments();
 
 function countUp(el) {
   if (el.dataset.done) return; el.dataset.done = 1;
