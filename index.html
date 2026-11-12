@@ -234,6 +234,30 @@
     transition: transform .6s var(--bounce); }
   .toast.show { transform: translate(-50%, 0); }
 
+  .video .thumb { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .8s var(--smooth); }
+  .video:hover .thumb { transform: scale(1.04); }
+  .video::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, transparent 50%, rgba(0,0,0,.45)); }
+  .video .play, .video .lbl { z-index: 2; }
+
+  .modal { position: fixed; inset: 0; z-index: 130; display: grid; place-items: center; padding: 20px;
+    background: rgba(4,4,7,.7); backdrop-filter: blur(8px); opacity: 0; pointer-events: none; transition: opacity .3s; }
+  .modal.show { opacity: 1; pointer-events: auto; }
+  .sheet { width: min(440px, 100%); transform: translateY(30px) scale(.94); transition: transform .6s var(--bounce); background: #111117; }
+  .modal.show .sheet { transform: none; }
+  .sheet h3 { font-size: 28px; letter-spacing: -.03em; margin: 8px 0 6px; }
+  .sheet > p { color: var(--muted); margin-bottom: 20px; }
+  .sheet .x { all: unset; position: absolute; top: 16px; right: 18px; cursor: pointer; color: var(--muted); font-size: 18px; padding: 6px; }
+  .step { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 14px; padding: 16px 18px; margin-bottom: 10px; cursor: pointer;
+    border-radius: 20px; border: 1px solid var(--line-2); background: var(--glass); font-weight: 700;
+    transition: transform .45s var(--bounce), border-color .25s, background .25s; }
+  .step:hover { transform: scale(1.03); }
+  .step .ck { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; border: 1.5px solid var(--line-2); color: transparent; }
+  .step small { display: block; color: var(--muted); font-weight: 400; font-size: 13px; }
+  .step.done { border-color: rgba(94,227,161,.5); background: rgba(94,227,161,.07); }
+  .step.done .ck { background: #5ee3a1; border-color: #5ee3a1; color: #08130d; }
+  .sheet .btn { width: 100%; justify-content: center; margin-top: 8px; }
+  .sheet .btn:disabled { opacity: .4; cursor: not-allowed; }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
     .pop, h1 .w { opacity: 1; transform: none; }
@@ -365,6 +389,18 @@
   </footer>
 </main>
 
+<div class="modal" id="gate" role="dialog" aria-modal="true" aria-labelledby="gateT">
+  <div class="card sheet">
+    <button class="x" id="gateX" aria-label="Close">✕</button>
+    <div class="eyebrow">Unlock download</div>
+    <h3 id="gateT">Two quick steps</h3>
+    <p>Support the channel to unlock the download. It's free and takes a few seconds.</p>
+    <button class="step" id="sLike" type="button"><span class="ck">✓</span><span>Like the video<small>Opens YouTube in a new tab</small></span></button>
+    <button class="step" id="sSub" type="button"><span class="ck">✓</span><span>Subscribe to the channel<small>Opens YouTube in a new tab</small></span></button>
+    <button class="btn primary" id="gateGo" type="button" disabled>Unlock download</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -380,7 +416,6 @@ const PREMODERATION = true;   // true = comments stay hidden until you approve t
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const ytUrl = `https://www.youtube.com/watch?v=${YT_ID}`;
-const placeholder = YT_ID === "pxLjEMoZEYw";
 
 /* greeting by visitor's local time */
 (() => {
@@ -399,23 +434,77 @@ const placeholder = YT_ID === "pxLjEMoZEYw";
   ).join(" ");
 })();
 
-/* links */
-$("#dl").href = DOWNLOAD_URL;
-$("#yt").href = ytUrl;
-$("#dl").addEventListener("click", e => {
-  if (DOWNLOAD_URL.includes("YOUR_USER")) { e.preventDefault(); toast("Add your real download link in the CONFIG block ✨"); }
-  else toast("Download started 🚀");
-});
+const SUB_URL = "https://www.youtube.com/@hitlockClient?sub_confirmation=1";  // shows YouTube's subscribe popup
+const placeholder = !YT_ID;
 
-/* video facade */
+/* links */
+$("#yt").href = ytUrl;
+$("#dl").href = DOWNLOAD_URL;
+
+/* video facade with real thumbnail */
 const video = $("#video");
-if (!placeholder) video.style.backgroundImage = `url(https://img.youtube.com/vi/${YT_ID}/hqdefault.jpg)`;
+if (!placeholder) {
+  const sizes = ["maxresdefault", "hqdefault"];
+  let si = 0;
+  const th = new Image();
+  th.className = "thumb"; th.alt = "Video thumbnail"; th.decoding = "async";
+  th.onerror = () => { if (++si < sizes.length) th.src = `https://img.youtube.com/vi/${YT_ID}/${sizes[si]}.jpg`; };
+  th.src = `https://img.youtube.com/vi/${YT_ID}/${sizes[0]}.jpg`;
+  video.prepend(th);
+}
 function playVideo() {
   if (placeholder) return toast("Add your YouTube video ID in the CONFIG block ✨");
   video.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${YT_ID}?autoplay=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
 }
 video.addEventListener("click", playVideo);
 video.addEventListener("keydown", e => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), playVideo()));
+
+/* like + subscribe gate */
+const gate = $("#gate"), MIN_AWAY = 5000;
+const steps = { like: { el: $("#sLike"), url: ytUrl }, sub: { el: $("#sSub"), url: SUB_URL } };
+const opened = {}, done = {};
+let unlocked = false; try { unlocked = localStorage.getItem("hl_unlocked") === "1"; } catch {}
+
+function startDownload() {
+  if (DOWNLOAD_URL.includes("YOUR_USER")) return toast("Add your real download link in the CONFIG block ✨");
+  const a = document.createElement("a"); a.href = DOWNLOAD_URL; a.download = ""; document.body.appendChild(a); a.click(); a.remove();
+  toast("Download started 🚀");
+}
+function refreshGate() {
+  for (const k in steps) steps[k].el.classList.toggle("done", !!done[k]);
+  $("#gateGo").disabled = !(done.like && done.sub);
+}
+function openGate(on) { gate.classList.toggle("show", on); }
+
+for (const k in steps) steps[k].el.addEventListener("click", () => {
+  if (done[k]) return;
+  opened[k] = Date.now();
+  window.open(steps[k].url, "_blank", "noopener");
+  toast(k === "like" ? "Like the video, then come back here 👍" : "Subscribe, then come back here 🔔");
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  for (const k in opened) {
+    if (done[k]) continue;
+    if (Date.now() - opened[k] >= MIN_AWAY) done[k] = true;
+    else toast("Please finish the step on YouTube first");
+    delete opened[k];
+  }
+  refreshGate();
+});
+
+$("#dl").addEventListener("click", e => {
+  e.preventDefault();
+  if (unlocked) return startDownload();
+  refreshGate(); openGate(true);
+});
+$("#gateGo").addEventListener("click", () => {
+  unlocked = true; try { localStorage.setItem("hl_unlocked", "1"); } catch {}
+  openGate(false); startDownload();
+});
+$("#gateX").addEventListener("click", () => openGate(false));
+gate.addEventListener("click", e => { if (e.target === gate) openGate(false); });
+addEventListener("keydown", e => e.key === "Escape" && openGate(false));
 
 /* marquee */
 const words = ["Fast", "Simple", "Free", "Smooth", "Reliable", "Lightweight", "Community-driven", "Open"];
