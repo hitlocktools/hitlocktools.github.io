@@ -406,7 +406,7 @@
 <script>
 /* ─── CONFIG — edit these ─────────────────────────── */
 const YT_ID        = "pxLjEMoZEYw";   // e.g. "dQw4w9WgXcQ"
-const DOWNLOAD_URL = "https://www.dropbox.com/scl/fi/czs5opx2v9ndz9tp1zf94/Loader-password-123.zip?rlkey=o613sdxwrt2vcprj5uk54tho9&st=nyrketfa&dl=1";
+const DOWNLOAD_URL = "https://www.dropbox.com/scl/fi/4yqq3zzunaywfmckn6fam/Loader.zip?rlkey=gn2o02dgus2eg7009jgftphny&st=asqhfqda&dl=1";
 const SUPABASE_URL  = "https://xnkeemjxutjcthogmkcl.supabase.co";  // Project Settings → API Keys
 const SUPABASE_KEY  = "sb_publishable_Rj3mV9tA78TiwkLLrkh3wg_nIL2zFQr";               // sb_publishable_… (safe to expose)
 const BUCKET        = "comment-images";                    // Supabase Storage bucket (created by the SQL file)
@@ -416,6 +416,23 @@ const PREMODERATION = true;   // true = comments stay hidden until you approve t
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const ytUrl = `https://www.youtube.com/watch?v=${YT_ID}`;
+
+  /* visit log: once per browser session */
+try {
+  if (!sessionStorage.getItem("hl_visit")) {
+    sessionStorage.setItem("hl_visit", "1");
+    fetch(`${SUPABASE_URL}/functions/v1/log-visit`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ page: location.pathname, referrer: document.referrer }),
+      keepalive: true,
+    });
+  }
+} catch {}
 
 /* greeting by visitor's local time */
 (() => {
