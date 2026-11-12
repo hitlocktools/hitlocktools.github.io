@@ -106,6 +106,7 @@
   .btn.primary:hover::after { transform: translateX(120%); }
   .btn.ghost { background: var(--glass); color: var(--text); border-color: var(--line-2); backdrop-filter: blur(10px); }
   .btn.ghost:hover { background: var(--glass-2); }
+  .btn:disabled { opacity: .6; cursor: progress; transform: none; }
 
   .scroll-hint { margin-top: 64px; color: var(--muted); font-size: 12px; letter-spacing: .2em; text-transform: uppercase; display: flex; flex-direction: column; align-items: center; gap: 10px; }
   .mouse { width: 24px; height: 38px; border: 1.5px solid var(--line-2); border-radius: 99px; position: relative; }
@@ -199,18 +200,30 @@
   /* comments */
   .c-head { display: flex; align-items: center; gap: 12px; }
   .count { background: var(--glass-2); border: 1px solid var(--line); border-radius: 99px; padding: 3px 12px; font-size: 13px; color: var(--muted); }
-  .form { display: flex; gap: 10px; margin: 28px 0 18px; flex-wrap: wrap; padding: 12px; border-radius: 26px; }
-  .form input { flex: 1 1 160px; min-width: 0; font: inherit; color: var(--text); background: var(--bg-2); border: 1px solid var(--line); border-radius: 99px; padding: 13px 20px; outline: none;
+  .form { display: flex; gap: 10px; margin: 28px 0 18px; flex-wrap: wrap; padding: 12px; border-radius: 26px; align-items: center; }
+  .form input[type=text], .form input:not([type]) { flex: 1 1 160px; min-width: 0; font: inherit; color: var(--text); background: var(--bg-2); border: 1px solid var(--line); border-radius: 99px; padding: 13px 20px; outline: none;
     transition: border-color .25s, transform .45s var(--bounce), box-shadow .3s; }
   .form input.msg { flex: 3 1 260px; }
   .form input:focus { border-color: rgba(245,184,61,.6); transform: scale(1.02); box-shadow: 0 0 0 4px rgba(245,184,61,.1); }
   .form input::placeholder { color: #5f5f6c; }
+  .attach { padding: 13px 20px; }
+  .preview { flex: 1 1 100%; display: none; align-items: center; gap: 12px; padding: 4px 8px; color: var(--muted); font-size: 13px; }
+  .preview.show { display: flex; }
+  .preview img { width: 64px; height: 64px; object-fit: cover; border-radius: 14px; border: 1px solid var(--line-2); }
+  .preview button { all: unset; cursor: pointer; color: var(--gold); font-weight: 700; padding: 4px 10px; border-radius: 99px; }
+  .preview button:hover { background: var(--glass-2); }
   .comment { display: flex; gap: 14px; padding: 18px 22px; margin-bottom: 10px; border-radius: 24px; }
   .comment:hover { transform: translateX(8px) scale(1.01); }
   .avatar { width: 42px; height: 42px; border-radius: 50%; flex: none; display: grid; place-items: center; font-weight: 900; color: #111; background: var(--c, var(--gold)); }
   .meta b { margin-right: 8px; } .meta span { color: var(--muted); font-size: 13px; }
-  .comment p { color: #c6c6d2; font-size: 15px; }
+  .comment p { color: #c6c6d2; font-size: 15px; overflow-wrap: anywhere; }
+  .comment .body { min-width: 0; }
+  .cimg { display: block; margin-top: 10px; width: fit-content; max-width: 100%; }
+  .cimg img { display: block; max-width: 100%; max-height: 340px; border-radius: 18px; border: 1px solid var(--line-2); transition: transform .45s var(--bounce); }
+  .cimg:hover img { transform: scale(1.02); }
   .comment.new { animation: pop .8s var(--bounce); }
+  .comment.pending { border-style: dashed; border-color: rgba(245,184,61,.35); }
+  .badge { font-size: 11px; color: var(--gold); border: 1px solid rgba(245,184,61,.3); background: rgba(245,184,61,.08); padding: 1px 9px; border-radius: 99px; margin-left: 6px; }
 
   footer { margin-top: 110px; border-top: 1px solid var(--line); padding: 44px 0 56px; display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; align-items: center; color: var(--muted); font-size: 14px; }
   footer .f { display: flex; gap: 18px; }
@@ -335,7 +348,13 @@
       <input id="name" placeholder="Your name" maxlength="24" required>
       <input id="msg" class="msg" placeholder="Leave a comment…" maxlength="200" required>
       <input id="hp" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
-      <button class="btn primary" type="submit">Post</button>
+      <input id="file" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+      <button class="btn ghost attach" type="button" id="attach" aria-label="Attach a picture">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-9 9"/></svg>
+        Photo
+      </button>
+      <button class="btn primary" type="submit" id="post">Post</button>
+      <div class="preview" id="preview"><img id="prevImg" alt=""><span id="prevName"></span><button type="button" id="prevX">Remove</button></div>
     </form>
     <div id="list"></div>
   </section>
@@ -354,7 +373,8 @@ const YT_ID        = "YOUR_VIDEO_ID";   // e.g. "dQw4w9WgXcQ"
 const DOWNLOAD_URL = "https://github.com/YOUR_USER/YOUR_REPO/releases/latest/download/Test.zip";
 const SUPABASE_URL  = "https://xnkeemjxutjcthogmkcl.supabase.co";  // Project Settings → API Keys
 const SUPABASE_KEY  = "sb_publishable_Rj3mV9tA78TiwkLLrkh3wg_nIL2zFQr";               // sb_publishable_… (safe to expose)
-const PREMODERATION = false;                                // true = comments appear after you approve them
+const BUCKET        = "comment-images";                    // Supabase Storage bucket (created by the SQL file)
+const PREMODERATION = true;   // true = comments stay hidden until you approve them in admin.html
 /* ─────────────────────────────────────────────────── */
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -422,6 +442,8 @@ $$(".q").forEach(el => el.addEventListener("click", () => {
 const sbReady = !SUPABASE_URL.includes("YOUR_PROJECT") && !SUPABASE_KEY.includes("YOUR_");
 const sb = (path, opts = {}) => fetch(`${SUPABASE_URL}/rest/v1/${path}`,
   { ...opts, headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json", ...opts.headers } });
+const IMG_BASE = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/`;
+const safeImg = u => (typeof u === "string" && u.startsWith(IMG_BASE)) ? u : "";
 
 function timeAgo(iso) {
   const then = new Date(iso.replace(/(\.\d{3})\d+/, "$1")), now = new Date();
@@ -441,11 +463,15 @@ function timeAgo(iso) {
 const colors = ["#f5b83d", "#7cc4ff", "#b794f6", "#6ee7a8", "#ff8fa3", "#ffd166"];
 const colorFor = n => colors[[...n].reduce((a, ch) => a + ch.charCodeAt(0), 0) % colors.length];
 const esc = s => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const cHTML = (c, cls = "") => `
-  <div class="card comment ${cls}">
+const cHTML = (c, cls = "", pending = false) => {
+  const img = safeImg(c.image_url) || (c.localImg || "");
+  return `
+  <div class="card comment ${cls}${pending ? " pending" : ""}">
     <div class="avatar" style="--c:${colorFor(c.name)}">${esc([...c.name][0].toUpperCase())}</div>
-    <div><div class="meta"><b>${esc(c.name)}</b><span>${timeAgo(c.created_at)}</span></div><p>${esc(c.message)}</p></div>
+    <div class="body"><div class="meta"><b>${esc(c.name)}</b><span>${timeAgo(c.created_at)}</span>${pending ? '<span class="badge">Awaiting approval</span>' : ""}</div><p>${esc(c.message)}</p>
+    ${img ? `<a class="cimg" href="${esc(img)}" target="_blank" rel="noopener"><img src="${esc(img)}" alt="Picture attached to comment" loading="lazy"></a>` : ""}</div>
   </div>`;
+};
 const note = t => `<div class="card comment note"><p>${t}</p></div>`;
 
 function setCount(n) {
@@ -456,7 +482,7 @@ function setCount(n) {
 async function loadComments() {
   if (!sbReady) { $("#list").innerHTML = note("Comments aren't connected yet — add your Supabase details in the CONFIG block."); return; }
   try {
-    const r = await sb("comments?select=name,message,created_at&order=created_at.desc&limit=50", { headers: { Prefer: "count=exact" } });
+    const r = await sb("comments?select=name,message,image_url,created_at&order=created_at.desc&limit=50", { headers: { Prefer: "count=exact" } });
     if (!r.ok) throw 0;
     const rows = await r.json();
     const total = +(r.headers.get("content-range") || "").split("/")[1] || rows.length;
@@ -464,6 +490,43 @@ async function loadComments() {
     setCount(total);
     $$("#list .pop").forEach((el, i) => { el.style.setProperty("--d", (i % 5) * .05 + "s"); io.observe(el); });
   } catch { $("#list").innerHTML = note("Couldn't load comments. Refresh the page to try again."); }
+}
+
+/* picture attach: pick → shrink in the browser → upload on post */
+let picked = null, pickedURL = "";
+const MAX_INPUT = 15 * 1024 * 1024;
+$("#attach").addEventListener("click", () => $("#file").click());
+$("#file").addEventListener("change", e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  if (!/^image\/(jpeg|png|webp|gif)$/.test(f.type)) return toast("Please choose a JPG, PNG, WebP or GIF");
+  if (f.size > MAX_INPUT) return toast("That picture is too large (max 15 MB)");
+  clearPick(); picked = f; pickedURL = URL.createObjectURL(f);
+  $("#prevImg").src = pickedURL; $("#prevName").textContent = f.name; $("#preview").classList.add("show");
+});
+$("#prevX").addEventListener("click", clearPick);
+function clearPick() {
+  if (pickedURL) URL.revokeObjectURL(pickedURL);
+  picked = null; pickedURL = ""; $("#preview").classList.remove("show"); $("#prevImg").removeAttribute("src");
+}
+async function shrink(file) {
+  const bmp = await createImageBitmap(file);
+  const s = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(bmp.width * s)); c.height = Math.max(1, Math.round(bmp.height * s));
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  const blob = await new Promise(r => c.toBlob(r, "image/webp", .82));
+  if (!blob) throw 0;
+  return blob;   // webp, or png on browsers without webp encoding (both allowed by the bucket)
+}
+async function uploadImage(file) {
+  const blob = await shrink(file);
+  const ext = blob.type === "image/webp" ? "webp" : blob.type === "image/png" ? "png" : "jpg";
+  const path = `${crypto.randomUUID()}.${ext}`;
+  const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`, {
+    method: "POST", headers: { apikey: SUPABASE_KEY, "Content-Type": blob.type, "cache-control": "31536000" }, body: blob });
+  if (!r.ok) throw 0;
+  return IMG_BASE + path;
 }
 
 let posting = false;
@@ -476,19 +539,22 @@ $("#form").addEventListener("submit", async e => {
   let last = 0; try { last = +localStorage.getItem("hl_last") || 0; } catch {}
   const wait = Math.ceil((last + 20000 - Date.now()) / 1000);
   if (wait > 0) return toast(`Slow down — try again in ${wait}s`);
-  posting = true;
+  posting = true; const btn = $("#post"); btn.disabled = true;
   try {
-    const r = await sb("comments", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ name, message }) });
+    let image_url = null;
+    if (picked) { toast("Uploading picture…"); image_url = await uploadImage(picked); }
+    const r = await sb("comments", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ name, message, image_url }) });
     if (!r.ok) throw 0;
     try { localStorage.setItem("hl_last", Date.now()); } catch {}
-    $("#msg").value = "";
-    if (PREMODERATION) return toast("Thanks! Your comment appears once it's approved.");
+    const localImg = pickedURL ? await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => res(""); fr.readAsDataURL(picked); }) : "";
+    $("#msg").value = ""; clearPick();
     if ($(".note", $("#list"))) $("#list").innerHTML = "";
-    $("#list").insertAdjacentHTML("afterbegin", cHTML({ name, message, created_at: new Date().toISOString() }, "new"));
-    setCount((+$("#count").textContent || 0) + 1);
-    toast("Comment posted 💬");
+    // show the poster their own comment right away (only they see it until it's approved)
+    $("#list").insertAdjacentHTML("afterbegin", cHTML({ name, message, created_at: new Date().toISOString(), localImg }, "new", PREMODERATION));
+    if (PREMODERATION) toast("Thanks! Your comment shows publicly once it's approved.");
+    else { setCount((+$("#count").textContent || 0) + 1); toast("Comment posted 💬"); }
   } catch { toast("Couldn't post — try again in a moment"); }
-  finally { posting = false; }
+  finally { posting = false; btn.disabled = false; }
 });
 
 /* reveal on scroll */
