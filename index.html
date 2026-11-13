@@ -22,9 +22,10 @@
     --bounce: cubic-bezier(.34, 1.56, .64, 1);
     --smooth: cubic-bezier(.22, 1, .36, 1);
     --r: 28px;
+    --bar: 38px;   /* announcement banner height */
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html { scroll-behavior: smooth; scroll-padding-top: 90px; }
+  html { scroll-behavior: smooth; scroll-padding-top: calc(90px + var(--bar)); }
   body {
     background: var(--bg); color: var(--text);
     font-family: ui-rounded, "SF Pro Rounded", "Nunito", "Segoe UI", system-ui, sans-serif;
@@ -46,12 +47,29 @@
     background: radial-gradient(circle, rgba(245,184,61,.09), transparent 65%);
     transform: translate(-50%, -50%); left: 50%; top: 30%; transition: left .6s var(--smooth), top .6s var(--smooth); }
 
+  /* announcement banner */
+  .notice { position: fixed; top: 0; left: 0; right: 0; height: var(--bar); z-index: 110; display: flex; align-items: center; gap: 12px;
+    padding: 0 12px 0 8px; color: var(--gold-ink); font-size: 13.5px; font-weight: 700;
+    background: linear-gradient(90deg, var(--gold), var(--gold-2) 50%, var(--gold)); box-shadow: 0 6px 24px -8px rgba(245,184,61,.5); }
+  .notice .tagw { flex: none; display: inline-flex; align-items: center; gap: 7px; padding: 4px 12px 4px 9px; border-radius: 99px; background: var(--gold-ink); color: var(--gold-2); font-size: 12.5px; }
+  .notice .tagw i { font-style: normal; display: inline-block; animation: wob 1.6s ease-in-out infinite; }
+  @keyframes wob { 0%, 100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg) scale(1.15); } }
+  .notice .tick { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap;
+    mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent); -webkit-mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent); }
+  .notice .run { display: inline-flex; width: max-content; animation: tick 50s linear infinite; }
+  .notice .run span { padding-right: 44px; }
+  .notice:hover .run { animation-play-state: paused; }
+  @keyframes tick { to { transform: translateX(-50%); } }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  @media (max-width: 560px) { :root { --bar: 36px; } .notice { font-size: 12.5px; gap: 8px; } }
+  @media (prefers-reduced-motion: reduce) { .notice .run, .notice .tagw i { animation: none; } }
+
   /* progress */
-  .progress { position: fixed; top: 0; left: 0; height: 3px; width: 0; z-index: 100;
+  .progress { position: fixed; top: var(--bar); left: 0; height: 3px; width: 0; z-index: 100;
     background: linear-gradient(90deg, var(--gold), var(--gold-2)); border-radius: 0 99px 99px 0; }
 
   /* nav */
-  nav { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 90;
+  nav { position: fixed; top: calc(var(--bar) + 16px); left: 50%; transform: translateX(-50%); z-index: 90;
     display: flex; align-items: center; gap: 4px; padding: 6px;
     background: rgba(14,14,19,.65); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
     border: 1px solid var(--line); border-radius: 999px;
@@ -266,6 +284,11 @@
 </head>
 <body>
 <div class="progress" id="progress"></div>
+<div class="notice" role="region" aria-label="Announcement">
+  <span class="tagw"><i>⚠️</i>Heads up</span>
+  <span class="sr">Update coming soon for Pirate Token Unlock. Until it is released, it might not work for some people.</span>
+  <div class="tick" aria-hidden="true"><div class="run" id="noticeRun"></div></div>
+</div>
 <div class="bg"><div class="orb a"></div><div class="orb b"></div><div class="orb c"></div><div class="grain"></div></div>
 <div class="glow" id="glow"></div>
 
@@ -281,7 +304,7 @@
 <main>
 
   <!-- HERO -->
-  <section class="hero" id="home" style="padding-top:120px">
+  <section class="hero" id="home" style="padding-top:calc(120px + var(--bar))">
     <div class="greet pop"><span class="dot"></span><span id="greeting"><b>Welcome</b></span></div>
     <h1 id="title"></h1>
     <p class="lead pop" style="--d:.9s">Small, sharp, beautifully simple tools — crafted with care and built to just work.</p>
@@ -527,9 +550,17 @@ addEventListener("keydown", e => e.key === "Escape" && openGate(false));
 const words = ["Fast", "Simple", "Free", "Smooth", "Reliable", "Lightweight", "Community-driven", "Open"];
 $("#track").innerHTML = [...words, ...words].map(w => `<span class="chip">${w}</span>`).join("");
 
+/* announcement ticker: two identical halves so the loop is seamless */
+(() => {
+  const msg = "Update coming soon for Pirate Token Unlock. Until it's released, it might not work for some people.";
+  const half = Array(6).fill(`<span>${msg}</span><span>⚠️</span>`).join("");
+  $("#noticeRun").innerHTML = half + half;
+})();
+
 /* FAQ */
 const faqs = [
   ["Is Hitlock Tools free?", "Yes — every tool here is free to download and use."],
+  ["How safe is Hitlock?", "Hitlock is safe and verified, so you can download and use it with confidence. For the real version, always download it from this page and nowhere else."],
   ["How do I install the Pirate Token Program?", "Press Download, extract the archive, and run it. Watch the YouTube showcase for a quick walkthrough."],
   ["Will there be more tools?", "That's the plan. New tools get added to this page as they're ready."],
   ["How can I share feedback?", "Leave a comment below — we read all of them and they shape what comes next."]
